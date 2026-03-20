@@ -5,7 +5,7 @@ const schema = new mongoose.Schema({
     name: String,
     permission: String,
     username: { type: String, required: true, default: "nousername"},
-    profileBio: { type: String, required: true, default: ""},
+    profileBio: { type: String, default: ""},
     totalLessons: { type: Number, required: true, default: 0},
     totalLessonTime: { type: Number, required: true, default: 0},
     profilePicture: String

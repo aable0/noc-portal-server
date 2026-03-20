@@ -5,6 +5,7 @@ const MONGO_DB_CONNECTION = process.env.MONGODB_CONNECT;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const COOKIE_SECRET = process.env.COOKIE_SECRET;
 const PRODUCTION = process.env.PRODUCTION;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const UserDB = require('./models/User');
 
 if (PRODUCTION == "true") console.log("PRODUCTION")
@@ -17,46 +18,19 @@ mongoose
 
     let io;
 
-    if (PRODUCTION == "true") {
-      const fs = require('fs');
-      const privateKey = fs.readFileSync('./privkey.pem', 'utf8');
-      const certificate = fs.readFileSync('./cert.pem', 'utf8');
-      const ca = fs.readFileSync('./chain.pem', 'utf8');
-
-      const credentials = {
-        key: privateKey,
-        cert: certificate,
-        ca: ca
-      };
-
-      const https = require('https');
-      const httpsServer = https.createServer(credentials, app);
-
-      io = require('socket.io')(httpsServer, {
-        cors: {
-          origin: '*',
-          methods: ['GET', 'POST'],
-        },
-      });
-
-      httpsServer.listen(443, () => {
-        console.log('HTTPS Server running on port 443');
-      });
-    }
-    else {
-      io = require('socket.io')(server, {
-        cors: {
-          origin: '*',
-          methods: ['GET', 'POST'],
-        },
-      });
-    }
+    io = require('socket.io')(server, {
+      cors: {
+        origin: FRONTEND_URL,
+        methods: ['GET', 'POST'],
+        credentials: true,
+      },
+    });
 
     const cors = require('cors');
 
     const corsConfig = {
       credentials: true,
-      origin: true,
+      origin: FRONTEND_URL,
     };
     app.use(cors(corsConfig));
 
@@ -103,34 +77,39 @@ mongoose
     });
 
     app.post('/api/v1/auth/google', async (req, res) => {
-      const { token } = req.body;
+      try {
+        const { token } = req.body;
 
-      if (!token) return res.json({ error: "Token not found!" });
+        if (!token) return res.json({ error: "Token not found!" });
 
-      const ticket = await client.verifyIdToken({
-        idToken: token,
-        audience: GOOGLE_CLIENT_ID,
-      });
-      const { name, email, picture } = ticket.getPayload();
+        const ticket = await client.verifyIdToken({
+          idToken: token,
+          audience: GOOGLE_CLIENT_ID,
+        });
+        const { name, email, picture } = ticket.getPayload();
 
-      let foundUser = await UserDB.findOne({ email: email });
+        let foundUser = await UserDB.findOne({ email: email });
 
-      if (!foundUser) {
-        let user = new UserDB({ email: email, name: name, profilePicture: picture, permission: "student" });
-        await user.save();
+        if (!foundUser) {
+          let user = new UserDB({ email: email, name: name, profilePicture: picture, permission: "student" });
+          await user.save();
 
-        req.session.user_id = user.id;
+          req.session.user_id = user.id;
 
-        res.status(200)
-        res.json(user);
+          res.status(200)
+          res.json(user);
+        }
+        else {
+          req.session.user_id = foundUser.id
+
+          res.status(200)
+          res.json(foundUser);
+        }
+        console.log("created cookie", req.session)
+      } catch (error) {
+        console.error("Google Auth Error:", error);
+        res.status(401).json({ error: "Authentication failed", details: error.message });
       }
-      else {
-        req.session.user_id = foundUser.id
-
-        res.status(200)
-        res.json(foundUser);
-      }
-      console.log("created cookie", req.session)
     });
 
 
